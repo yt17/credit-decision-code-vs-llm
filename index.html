@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Decision: Code vs LLM</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --card: #ffffff; --ink: #22252a; --muted: #6a6f78; --line: #e2ded5;
+    --accent: #2f6f8f; --ok: #2f8a4a; --warn: #b7791f; --err: #c0392b;
+    --okbg: #e7f4ea; --warnbg: #fbf1dc; --errbg: #fbe7e4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17181b; --card: #212328; --ink: #ecebe7; --muted: #9aa0aa; --line: #33363d;
+            --okbg: #1f3326; --warnbg: #3a2f17; --errbg: #3b201d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 18px 24px 6px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 900px; }
+  main { padding: 12px 24px 40px; display: grid; gap: 16px; grid-template-columns: 340px 1fr; align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 15px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 9px 0 3px; }
+  input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { resize: vertical; font: 12px/1.45 ui-monospace, Menlo, monospace; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .check { display: flex; gap: 7px; align-items: center; margin-top: 9px; font-size: 13px; color: var(--ink); }
+  .check input { width: auto; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+  button { border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 7px 12px; border-radius: 8px; font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  .badge { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 16px; }
+  .APPROVE { background: var(--okbg); color: var(--ok); } .REVIEW { background: var(--warnbg); color: var(--warn); } .DECLINE { background: var(--errbg); color: var(--err); }
+  .muted { color: var(--muted); }
+  ul { margin: 8px 0 0; padding-left: 18px; } li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .status { font-size: 12.5px; margin-top: 8px; min-height: 18px; color: var(--muted); }
+  .status.err { color: var(--err); }
+  details pre { white-space: pre-wrap; word-break: break-word; font-size: 11.5px; background: var(--bg); padding: 8px; border-radius: 8px; max-height: 260px; overflow: auto; }
+  .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+  .kv div { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+  .kv b { display: block; font-size: 15px; } .kv span { font-size: 11px; color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Credit Decision: Code vs LLM</h1>
+  <p>A new loan request is decided from a synthetic customer's credit history. Rule-based code on the left, an LLM on the right. All data is made up; never enter real customer data. This is a learning experiment, not a credit decisioning tool.</p>
+</header>
+<main>
+  <!-- SETTINGS -->
+  <section class="card">
+    <h2>LLM settings</h2>
+    <label for="preset">Provider</label>
+    <select id="preset">
+      <optgroup label="Closed models (cloud)">
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic Claude</option>
+      </optgroup>
+      <optgroup label="Open models (cloud)">
+        <option value="groq">Groq (very fast, free tier)</option>
+        <option value="openrouter">OpenRouter (:free models are free)</option>
+        <option value="huggingface">Hugging Face</option>
+      </optgroup>
+      <optgroup label="Open models (on your computer)">
+        <option value="ollama">Ollama</option>
+        <option value="lmstudio">LM Studio</option>
+        <option value="llamacpp">llama.cpp server</option>
+      </optgroup>
+      <optgroup label="Other"><option value="custom">Other (OpenAI compatible)</option></optgroup>
+    </select>
+    <div class="hint" id="presetNote"></div>
+    <label for="baseUrl">Base URL</label>
+    <input id="baseUrl">
+    <label for="model">Model <span style="font-weight:400">(pick from the list or type)</span></label>
+    <div style="display:flex;gap:6px"><input id="model" list="modelList"><button id="listModels" type="button" style="white-space:nowrap">List models</button></div><datalist id="modelList"></datalist>
+    <div class="hint" id="modelsNote"></div>
+    <label for="apiKey">API key</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="Leave empty for Ollama, LM Studio, llama.cpp">
+    <label class="check"><input id="rememberKey" type="checkbox"> Remember key in this browser</label>
+    <div class="hint">The key stays in your browser and goes straight to the provider. Don't share it.</div>
+    <div class="row">
+      <div><label for="temp">Temperature: <b id="tempVal">0</b></label><input id="temp" type="range" min="0" max="2" step="0.1" value="0"></div>
+      <div><label for="effort">Reasoning effort</label>
+        <select id="effort"><option value="">Default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="priceIn">Input $/1M tokens</label><input id="priceIn" type="number" step="0.01" value="0"></div>
+      <div><label for="priceOut">Output $/1M tokens</label><input id="priceOut" type="number" step="0.01" value="0"></div>
+    </div>
+    <label class="check"><input id="giveMetrics" type="checkbox"> Also send the metrics computed by code to the LLM</label>
+    <div class="hint">Off: the LLM works out everything from the raw JSON. On: "code does the math, the LLM interprets". Compare both.</div>
+    <label for="system">System message</label>
+    <textarea id="system" rows="9"></textarea>
+
+    <h2 style="margin-top:16px">Rule settings (code)</h2>
+    <div class="row3"><div><label for="r_personal">Personal % / mo</label><input id="r_personal" type="number" step="0.1" value="3.5"></div>
+      <div><label for="v_personal">Personal max term</label><input id="v_personal" type="number" value="36"></div><div></div></div>
+    <div class="row3"><div><label for="r_auto">Auto % / mo</label><input id="r_auto" type="number" step="0.1" value="3.2"></div>
+      <div><label for="v_auto">Auto max term</label><input id="v_auto" type="number" value="48"></div><div></div></div>
+    <div class="row3"><div><label for="r_mortgage">Mortgage % / mo</label><input id="r_mortgage" type="number" step="0.1" value="2.8"></div>
+      <div><label for="v_mortgage">Mortgage max term</label><input id="v_mortgage" type="number" value="120"></div><div></div></div>
+    <label for="dtiMax">Max debt-to-income (%)</label>
+    <input id="dtiMax" type="number" value="50">
+    <div class="hint">Rates and limits are example assumptions, not real regulation or bank policy.</div>
+  </section>
+
+  <section style="display:grid; gap:16px">
+    <div class="card">
+      <h2>1) Customer and request</h2>
+      <div class="row">
+        <div><label for="profile">Synthetic customer profile</label>
+          <select id="profile">
+            <option value="good">Pays on time and early</option>
+            <option value="occasional">Occasionally a few days late</option>
+            <option value="chronic">Frequently and long late</option>
+            <option value="delinquent">Has unpaid installments</option>
+            <option value="thinFile">New customer (thin file)</option>
+            <option value="highDebt">Pays well but heavily indebted</option>
+          </select></div>
+        <div><label>&nbsp;</label><button id="regen">Reload profile</button></div>
+      </div>
+      <label for="history">Credit history (JSON, edit it or paste your own)</label>
+      <textarea id="history" rows="12"></textarea>
+      <div class="row3">
+        <div><label for="reqType">Request: loan type</label>
+          <select id="reqType"><option value="personal">Personal</option><option value="auto">Auto</option><option value="mortgage">Mortgage</option></select></div>
+        <div><label for="reqAmount">Amount (TRY)</label><input id="reqAmount" type="number" value="100000" step="1000"></div>
+        <div><label for="reqTerm">Installments (months)</label><input id="reqTerm" type="number" value="24"></div>
+      </div>
+      <div class="btns">
+        <button class="primary" id="runBoth">Evaluate with both</button>
+        <button id="runCode">Code only</button>
+        <button id="runLlm">LLM only</button>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="card"><h2>Code decision (rule engine)</h2><div id="codeOut" class="muted">Not evaluated yet.</div></div>
+      <div class="card"><h2>LLM decision</h2><div id="llmOut" class="muted">Not evaluated yet.</div><div class="status" id="llmStatus"></div>
+        <details><summary>Last request (without key)</summary><pre id="lastReq">—</pre></details>
+        <details><summary>Last response</summary><pre id="lastRes">—</pre></details></div>
+    </div>
+
+    <div class="card">
+      <h2>2) Batch test: all profiles, same request</h2>
+      <div class="btns"><button class="primary" id="runBatch">Run batch test</button><button id="stopBatch" disabled>Stop</button>
+        <label class="check" style="margin:0 0 0 8px"><input id="batchLlm" type="checkbox" checked> Also run the LLM</label></div>
+      <div class="status" id="batchStatus"></div>
+      <table id="batch"></table>
+      <div class="note">"Expected" is the outcome each profile was designed for under the default request (personal loan, 100,000 TRY, 24 months). It may differ for other requests.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ===================== 1) SYNTHETIC DATA ===================== */
+const REF_DATE = "2026-11-08"; // all calculations use this date
+const TYPE_NAME = { personal: "Personal", auto: "Auto", mortgage: "Mortgage" };
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const ri = (rng, a, b) => a + Math.floor(rng() * (b - a + 1));
+function addMonths(iso, m) { const d = new Date(iso + "T00:00:00Z"); d.setUTCMonth(d.getUTCMonth() + m); return d.toISOString().slice(0, 10); }
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+
+function rates() { return { personal: +$("r_personal").value / 100, auto: +$("r_auto").value / 100, mortgage: +$("r_mortgage").value / 100 }; }
+function annuity(P, r, n) { return r === 0 ? P / n : P * r / (1 - Math.pow(1 + r, -n)); }
+
+// Payment-delay generators: 0 = on time, negative = early, positive = late
+const PATTERNS = {
+  good:       rng => rng() < 0.35 ? -ri(rng, 1, 6) : 0,
+  occasional: rng => { const x = rng(); return x < 0.12 ? ri(rng, 3, 15) : x < 0.25 ? -ri(rng, 1, 3) : 0; },
+  chronic:    rng => { const x = rng(); return x < 0.35 ? ri(rng, 5, 40) : x < 0.42 ? ri(rng, 45, 75) : 0; },
+};
+
+const PROFILES = {
+  good:       { income: 65000,  employment: 72, expected: "APPROVE",
+                loans: [{ type: "auto", amount: 400000, n: 48, startedMonthsAgo: 30, p: "good" }, { type: "personal", amount: 80000, n: 12, startedMonthsAgo: 26, p: "good" }] },
+  occasional: { income: 42000,  employment: 40, expected: "APPROVE",
+                loans: [{ type: "personal", amount: 150000, n: 36, startedMonthsAgo: 20, p: "occasional" }, { type: "personal", amount: 30000, n: 12, startedMonthsAgo: 30, p: "good" }] },
+  chronic:    { income: 60000,  employment: 30, expected: "DECLINE",
+                loans: [{ type: "personal", amount: 200000, n: 36, startedMonthsAgo: 22, p: "chronic" }, { type: "auto", amount: 200000, n: 36, startedMonthsAgo: 15, p: "chronic" }] },
+  delinquent: { income: 35000,  employment: 18, expected: "DECLINE",
+                loans: [{ type: "personal", amount: 120000, n: 24, startedMonthsAgo: 16, p: "occasional", unpaidLast: 3 }] },
+  thinFile:   { income: 30000,  employment: 8,  expected: "REVIEW",
+                loans: [{ type: "personal", amount: 20000, n: 6, startedMonthsAgo: 8, p: "good" }] },
+  highDebt:   { income: 140000, employment: 60, expected: "DECLINE",
+                loans: [{ type: "mortgage", amount: 1500000, n: 120, startedMonthsAgo: 24, p: "good" }, { type: "auto", amount: 800000, n: 36, startedMonthsAgo: 10, p: "good" },
+                        { type: "personal", amount: 250000, n: 36, startedMonthsAgo: 6, p: "good" }] },
+};
+
+function makeProfile(kind) {
+  const P = PROFILES[kind], rng = mulberry32(kind.length * 7919 + kind.charCodeAt(0)), r = rates();
+  const loans = P.loans.map((k, ki) => {
+    const startDate = addMonths(REF_DATE, -k.startedMonthsAgo);
+    const inst = Math.round(annuity(k.amount, r[k.type], k.n));
+    const history = []; let remaining = 0;
+    const unpaidFrom = k.unpaidLast ? Math.min(k.n, k.startedMonthsAgo) - k.unpaidLast + 1 : Infinity;
+    for (let i = 1; i <= k.n; i++) {
+      const dueDate = addMonths(startDate, i);
+      if (dueDate >= REF_DATE) { remaining++; continue; } // due today is not overdue yet
+      if (i >= unpaidFrom) {
+        const d = daysBetween(dueDate, REF_DATE);
+        history.push({ no: i, dueDate, paymentDate: null, status: "unpaid", daysLate: d,
+                       installmentAmount: inst, paidAmount: 0, earlyPaymentDiscount: 0, lateFee: Math.round(inst * 0.002 * d) });
+        continue;
+      }
+      const g = PATTERNS[k.p](rng);
+      const disc = g < 0 ? Math.round(inst * 0.0015 * -g) : 0, fee = g > 0 ? Math.round(inst * 0.002 * g) : 0;
+      history.push({ no: i, dueDate, paymentDate: addDays(dueDate, g), status: g < 0 ? "early" : g > 0 ? "late" : "on_time", daysLate: g,
+                     installmentAmount: inst, paidAmount: inst - disc + fee, earlyPaymentDiscount: disc, lateFee: fee });
+    }
+    return { loanId: `L${ki + 1}`, type: k.type, amount: k.amount, termMonths: k.n, installmentAmount: inst, startDate,
+             status: remaining === 0 ? "closed" : "active", remainingInstallments: remaining, installments: history };
+  });
+  return { referenceDate: REF_DATE, currency: "TRY", note: "Synthetic data, not a real person.",
+           customer: { id: "SYNTHETIC-" + kind.toUpperCase(), monthlyNetIncome: P.income, employmentMonths: P.employment }, loans };
+}
+
+/* ===================== 2) CODE: RULE ENGINE ===================== */
+function metrics(h, req) {
+  const r = rates();
+  const all = h.loans.flatMap(k => k.installments || []);
+  const paid = all.filter(t => t.status !== "unpaid");
+  const late = paid.filter(t => t.daysLate > 0), early = paid.filter(t => t.daysLate < 0);
+  const unpaid = all.filter(t => t.status === "unpaid");
+  const maxDelay = all.reduce((m, t) => Math.max(m, t.daysLate || 0), 0);
+  const currentInst = h.loans.filter(k => k.status === "active").reduce((s, k) => s + (k.installmentAmount || 0), 0);
+  const newInst = Math.round(annuity(req.amount, r[req.type], req.n));
+  const income = h.customer?.monthlyNetIncome || 0;
+  return {
+    totalInstallments: all.length, paidInstallments: paid.length, lateInstallments: late.length, earlyInstallments: early.length,
+    unpaidInstallments: unpaid.length, lateRatio: paid.length ? +(late.length / paid.length).toFixed(3) : 0,
+    earlyRatio: paid.length ? +(early.length / paid.length).toFixed(3) : 0,
+    maxDaysLate: maxDelay, avgDaysLate: late.length ? +(late.reduce((s, t) => s + t.daysLate, 0) / late.length).toFixed(1) : 0,
+    totalLateFees: all.reduce((s, t) => s + (t.lateFee || 0), 0),
+    totalEarlyDiscounts: all.reduce((s, t) => s + (t.earlyPaymentDiscount || 0), 0),
+    currentMonthlyInstallments: currentInst, newMonthlyInstallment: newInst, monthlyIncome: income,
+    debtToIncome: income ? +((currentInst + newInst) / income).toFixed(3) : null,
+    employmentMonths: h.customer?.employmentMonths ?? null,
+  };
+}
+
+function codeDecision(h, req) {
+  const m = metrics(h, req), maxTerm = { personal: +$("v_personal").value, auto: +$("v_auto").value, mortgage: +$("v_mortgage").value };
+  const dtiMax = +$("dtiMax").value / 100, hard = [], g = [];
+  if (m.unpaidInstallments > 0) hard.push(`${m.unpaidInstallments} overdue unpaid installment(s)`);
+  if (m.maxDaysLate >= 90) hard.push(`${m.maxDaysLate} days late (90+ day default threshold)`);
+  if (m.debtToIncome !== null && m.debtToIncome > dtiMax) hard.push(`Debt-to-income ${Math.round(m.debtToIncome * 100)}%, limit ${Math.round(dtiMax * 100)}%`);
+  if (req.n > maxTerm[req.type]) hard.push(`${TYPE_NAME[req.type]} max term is ${maxTerm[req.type]} months (requested ${req.n})`);
+  if (hard.length) return { decision: "DECLINE", risk: "HIGH", score: 0, reasons: hard.map(x => "Hard decline: " + x), m };
+
+  let score = 100;
+  if (m.maxDaysLate >= 30) { score -= 30; g.push(`Longest delay ${m.maxDaysLate} days (−30)`); }
+  else if (m.maxDaysLate >= 8) { score -= 10; g.push(`Longest delay ${m.maxDaysLate} days (−10)`); }
+  const lr = Math.round(m.lateRatio * 50);
+  if (lr) { score -= lr; g.push(`${Math.round(m.lateRatio * 100)}% of installments paid late (−${lr})`); }
+  if (m.debtToIncome > 0.4) { score -= 15; g.push(`Debt-to-income ${Math.round(m.debtToIncome * 100)}% (−15)`); }
+  if (m.paidInstallments < 12) { score -= 30; g.push(`Only ${m.paidInstallments} paid installments: thin file (−30)`); }
+  if (m.employmentMonths !== null && m.employmentMonths < 12) { score -= 10; g.push(`Employed for ${m.employmentMonths} months (−10)`); }
+  if (m.earlyRatio >= 0.2) { score = Math.min(100, score + 5); g.push(`${Math.round(m.earlyRatio * 100)}% of installments paid early (+5)`); }
+  if (!g.length) g.push("No negative signals");
+  const decision = score >= 70 ? "APPROVE" : score >= 50 ? "REVIEW" : "DECLINE";
+  return { decision, risk: { APPROVE: "LOW", REVIEW: "MEDIUM", DECLINE: "HIGH" }[decision], score, reasons: g, m };
+}
+
+/* ===================== 3) LLM ===================== */
+const PRESETS = {
+  gemini:    { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", format: "openai", models: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-lite-latest", "gemini-flash-latest"], temp: 1, effort: "low", note: "Key: aistudio.google.com → Get API key. Free tier available. The newest model (3.8-flash) often returns 503 or hangs; flash-lite is fast. Temperature 1 is recommended for Gemini 3." },
+  openai:    { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", format: "openai", models: ["gpt-4o-mini"], note: "Key: platform.openai.com → API keys. Paid." },
+  anthropic: { baseUrl: "https://api.anthropic.com/v1", model: "claude-haiku-5-5", format: "anthropic", models: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"], note: "Key: console.anthropic.com. Paid. Temperature max 1." },
+  groq:      { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", format: "openai", models: ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "llama-3.1-8b-instant"], note: "Key: console.groq.com → API Keys. The free tier has per-minute limits; on 429 set reasoning effort to low." },
+  openrouter:{ baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-oss-20b", format: "openai", models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "meta-llama/llama-3.3-70b-instruct", "qwen/qwen3-32b", "deepseek/deepseek-chat"], note: "Hundreds of models with one key. Models ending in “:free” cost nothing. Key: openrouter.ai → Keys." },
+  huggingface:{ baseUrl: "https://router.huggingface.co/v1", model: "openai/gpt-oss-20b", format: "openai", models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "meta-llama/Llama-3.3-70B-Instruct", "Qwen/Qwen3-32B"], note: "Key: huggingface.co → Settings → Access Tokens." },
+  ollama:    { baseUrl: "http://localhost:11434/v1", model: "llama3.2", format: "openai", models: ["llama3.2", "qwen3", "gemma3", "mistral", "gpt-oss:20b"], note: "Free, data never leaves your computer. Needs OLLAMA_ORIGINS=\"*\"." },
+  lmstudio:  { baseUrl: "http://localhost:1234/v1", model: "", format: "openai", models: [], note: "Start the server in LM Studio and type the model name." },
+  llamacpp:  { baseUrl: "http://localhost:8080/v1", model: "local", format: "openai", models: ["local"], note: "llama-server -m model.gguf --port 8080" },
+  custom:    { baseUrl: "", model: "", format: "openai", models: [], note: "Any provider that supports the OpenAI format." },
+};
+const DEFAULT_SYSTEM =
+`You are an experienced credit analyst at a bank. You will receive a customer's credit history (JSON) and a new loan request.
+Assess: whether installments were paid on time, early or late (daysLate: 0 on time, negative early, positive late), unpaid installments, how long and how often payments were late, late fees, the current installment burden relative to income, how thick the file is (how much payment history exists), and how the requested loan changes that burden.
+Reply ONLY in this JSON format, with no other text:
+{"decision":"APPROVE|REVIEW|DECLINE","risk":"LOW|MEDIUM|HIGH","confidence":0-100,"reasons":["short reason", "..."],"recommendation":"short recommendation"}`;
+
+function buildUser(h, req) {
+  let msg = `New loan request: ${TYPE_NAME[req.type]} loan, ${req.amount.toLocaleString("en-US")} TRY, ${req.n} monthly installments.\n`;
+  if ($("giveMetrics").checked) msg += `\nSummary metrics computed by code:\n${JSON.stringify(metrics(h, req))}\n`;
+  return msg + `\nCustomer credit history (JSON):\n${JSON.stringify(h)}`;
+}
+
+function parseDecision(text) {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try {
+    const j = JSON.parse(text.slice(a, b + 1));
+    j.decision = String(j.decision || "").toUpperCase().trim(); j.risk = String(j.risk || "").toUpperCase().trim();
+    if (!["APPROVE", "REVIEW", "DECLINE"].includes(j.decision)) return null;
+    if (!Array.isArray(j.reasons)) j.reasons = j.reasons ? [String(j.reasons)] : [];
+    return j;
+  } catch (e) { return null; }
+}
+
+async function callLLM(cfg, system, user) {
+  const base = cfg.baseUrl.replace(/\/+$/, "");
+  let url, headers = { "Content-Type": "application/json" }, body;
+  if (cfg.format === "anthropic") {
+    url = base + "/messages";
+    headers["x-api-key"] = cfg.apiKey; headers["anthropic-version"] = "2023-06-01"; headers["anthropic-dangerous-direct-browser-access"] = "true";
+    body = { model: cfg.model, max_tokens: 1024, temperature: Math.min(cfg.temperature, 1), system, messages: [{ role: "user", content: user }] };
+  } else {
+    url = base + "/chat/completions";
+    if (cfg.apiKey) headers["Authorization"] = "Bearer " + cfg.apiKey;
+    body = { model: cfg.model, temperature: cfg.temperature, max_tokens: 8192, messages: [{ role: "system", content: system }, { role: "user", content: user }] };
+    if (cfg.effort) body.reasoning_effort = cfg.effort;
+  }
+  $("lastReq").textContent = `POST ${url}\n\n` + JSON.stringify(body, null, 2);
+  const t0 = performance.now();
+  const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 120000);
+  let res;
+  try { res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal }); }
+  catch (e) { if (e.name === "AbortError") throw new Error("No response within 120 s. Set reasoning effort to low or pick a lighter model (e.g. flash-lite)."); throw e; }
+  finally { clearTimeout(timer); }
+  const ms = Math.round(performance.now() - t0), raw = await res.text();
+  $("lastRes").textContent = `HTTP ${res.status} · ${ms} ms\n\n` + raw;
+  if (!res.ok) { const e = new Error(`HTTP ${res.status}: ${raw.slice(0, 200)}`); e.status = res.status;
+    const ra = parseFloat(res.headers.get("retry-after")); if (ra > 0) e.retryAfter = Math.ceil(ra); throw e; }
+  const j = JSON.parse(raw);
+  if (cfg.format === "anthropic") return { text: (j.content || []).filter(c => c.type === "text").map(c => c.text).join(""),
+    inT: j.usage?.input_tokens || 0, outT: j.usage?.output_tokens || 0, ms };
+  const inT = j.usage?.prompt_tokens || 0;
+  return { text: j.choices?.[0]?.message?.content || "", finish: j.choices?.[0]?.finish_reason, inT, outT: j.usage?.total_tokens ? j.usage.total_tokens - inT : (j.usage?.completion_tokens || 0), ms };
+}
+
+// Waits and retries on 429/503; returns null if stopped.
+async function llmDecision(h, req, ctl) {
+  const c = cfg();
+  if (!c.baseUrl || !c.model) throw new Error("Base URL and model are required.");
+  if (!c.apiKey && c.format === "anthropic") throw new Error("This provider needs an API key.");
+  let waits = 0;
+  while (true) {
+    try {
+      const r = await callLLM(c, $("system").value, buildUser(h, req));
+      return { ...r, d: parseDecision(r.text) };
+    } catch (e) {
+      if ((e.status === 429 || e.status === 503) && waits < 8 && !ctl.stop) {
+        const sec = e.retryAfter || Math.min(60, 5 * 2 ** waits); waits++;
+        for (let left = sec; left > 0 && !ctl.stop; left--) { ctl.onWait?.(`HTTP ${e.status}: rate limit or busy, retrying in ${left} s (${waits}/8)…`); await sleep(1000); }
+        continue;
+      }
+      if (ctl.stop) return null;
+      if (e.message.includes("Failed to fetch")) throw new Error("Could not connect (wrong URL or CORS).");
+      throw e;
+    }
+  }
+}
+
+/* ===================== 4) UI ===================== */
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const badge = k => `<span class="badge ${k}">${k}</span>`;
+const money = n => (n ?? 0).toLocaleString("en-US") + " TRY";
+const pct = x => x === null || x === undefined ? "—" : Math.round(x * 100) + "%";
+
+function cfg() { return { baseUrl: $("baseUrl").value.trim(), model: $("model").value.trim(), apiKey: $("apiKey").value.trim(),
+  temperature: parseFloat($("temp").value), format: PRESETS[$("preset").value].format, effort: $("effort").value }; }
+const cost = (inT, outT) => (inT * (+$("priceIn").value || 0) + outT * (+$("priceOut").value || 0)) / 1e6;
+
+function readInput() {
+  let h;
+  try { h = JSON.parse($("history").value); } catch (e) { throw new Error("Credit history is not valid JSON: " + e.message); }
+  if (!Array.isArray(h.loans)) throw new Error("The JSON must contain a 'loans' list.");
+  return { h, req: { type: $("reqType").value, amount: +$("reqAmount").value || 0, n: +$("reqTerm").value || 1 } };
+}
+
+function renderCode(d) {
+  const m = d.m;
+  $("codeOut").innerHTML = `${badge(d.decision)} <span class="muted">Score ${d.score}/100 · Risk ${d.risk}</span>
+    <ul>${d.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    <div class="kv">
+      <div><b>${m.paidInstallments}</b><span>Paid installments</span></div>
+      <div><b>${pct(m.lateRatio)}</b><span>Late ratio</span></div>
+      <div><b>${m.maxDaysLate} days</b><span>Longest delay</span></div>
+      <div><b>${m.unpaidInstallments}</b><span>Unpaid installments</span></div>
+      <div><b>${pct(m.earlyRatio)}</b><span>Early payment ratio</span></div>
+      <div><b>${pct(m.debtToIncome)}</b><span>Debt-to-income (with new)</span></div>
+      <div><b>${money(m.currentMonthlyInstallments)}</b><span>Current monthly installments</span></div>
+      <div><b>${money(m.newMonthlyInstallment)}</b><span>New monthly installment</span></div>
+      <div><b>${money(m.totalLateFees)}</b><span>Late fees paid</span></div>
+    </div><div class="note">Computed in ${d.ms.toFixed(2)} ms · Cost: $0</div>`;
+}
+
+function renderLlm(r) {
+  if (!r.d) {
+    const why = (r.finish === "length" && !r.text.trim())
+      ? `The model hit the token limit before writing an answer: it spent ${r.outT} tokens reasoning and returned nothing (finish_reason: length). Set reasoning effort to <b>low</b> or try a bigger model.`
+      : `The model did not reply in the requested JSON format. See "Last response".`;
+    $("llmOut").innerHTML = `<span class="badge DECLINE">Unreadable</span><div class="note">${why}</div>`; return; }
+  const d = r.d;
+  $("llmOut").innerHTML = `${badge(d.decision)} <span class="muted">Confidence ${d.confidence ?? "—"} · Risk ${esc(d.risk || "—")}</span>
+    <ul>${d.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    ${d.recommendation ? `<div class="note"><b>Recommendation:</b> ${esc(d.recommendation)}</div>` : ""}
+    <div class="kv"><div><b>${r.inT}</b><span>Input tokens</span></div><div><b>${r.outT}</b><span>Output tokens (incl. reasoning)</span></div>
+      <div><b>${r.ms} ms</b><span>Time</span></div><div><b>$${cost(r.inT, r.outT).toFixed(5)}</b><span>Cost</span></div></div>`;
+}
+
+function runCode() {
+  try { const { h, req } = readInput(); const t0 = performance.now(); const d = codeDecision(h, req); d.ms = performance.now() - t0; renderCode(d); return d; }
+  catch (e) { $("codeOut").innerHTML = `<span class="status err">${esc(e.message)}</span>`; return null; }
+}
+async function runLlm() {
+  const st = $("llmStatus"); st.className = "status"; const t0 = Date.now(); st.textContent = "LLM is thinking…"; $("llmOut").innerHTML = "";
+  const tick = setInterval(() => { if (st.textContent.startsWith("LLM is thinking")) st.textContent = `LLM is thinking… ${Math.round((Date.now() - t0) / 1000)} s`; }, 1000);
+  const ctl = { stop: false, onWait: t => { st.textContent = t; st.className = "status err"; } };
+  try { const { h, req } = readInput(); const r = await llmDecision(h, req, ctl); if (r) renderLlm(r); st.textContent = ""; st.className = "status"; return r; }
+  catch (e) { st.textContent = e.message; st.className = "status err"; return null; }
+  finally { clearInterval(tick); }
+}
+
+/* --- Batch test --- */
+let batchCtl = null;
+async function runBatch() {
+  const kinds = Object.keys(PROFILES), useLlm = $("batchLlm").checked, req = { type: $("reqType").value, amount: +$("reqAmount").value || 0, n: +$("reqTerm").value || 1 };
+  batchCtl = { stop: false, onWait: t => $("batchStatus").textContent = t };
+  $("runBatch").disabled = true; $("stopBatch").disabled = false; $("batchStatus").textContent = "";
+  const rows = []; let tin = 0, tout = 0, tms = 0, same = 0, codeHit = 0, llmHit = 0, llmDone = 0, failed = false;
+  const label = kind => $("profile").querySelector(`[value=${kind}]`).textContent;
+  const head = `<tr><th>Profile</th><th>Expected</th><th>Code</th><th>LLM</th><th>Match</th><th>LLM reason (first)</th><th>Tokens</th></tr>`;
+  const draw = () => $("batch").innerHTML = head + rows.join("") +
+    `<tr><th>Total</th><th></th><th>${codeHit}/${kinds.length} as expected</th><th>${useLlm ? `${llmHit}/${llmDone} as expected` : "—"}</th>
+     <th>${useLlm ? `${same}/${llmDone}` : "—"}</th><th>${useLlm ? `Avg ${llmDone ? Math.round(tms / llmDone) : 0} ms` : ""}</th>
+     <th>${useLlm ? `${tin}/${tout} · $${cost(tin, tout).toFixed(5)}` : ""}</th></tr>`;
+  for (const kind of kinds) {
+    if (batchCtl.stop) break;
+    const h = makeProfile(kind), cd = codeDecision(h, req), exp = PROFILES[kind].expected;
+    if (cd.decision === exp) codeHit++;
+    let llmCell = "—", match = "—", why = "", tok = "";
+    if (useLlm) {
+      $("batchStatus").textContent = `${label(kind)}: LLM is thinking…`;
+      try {
+        const r = await llmDecision(h, req, batchCtl);
+        if (!r) break;
+        llmDone++; tin += r.inT; tout += r.outT; tms += r.ms;
+        if (r.d) { llmCell = badge(r.d.decision); if (r.d.decision === cd.decision) same++; if (r.d.decision === exp) llmHit++;
+          match = r.d.decision === cd.decision ? "✔︎" : "✘"; why = esc(r.d.reasons[0] || ""); }
+        else { llmCell = `<span class="badge DECLINE">Unreadable</span>`; match = "✘"; }
+        tok = `${r.inT}/${r.outT}`;
+      } catch (e) { $("batchStatus").textContent = e.message; failed = true; break; }
+    }
+    rows.push(`<tr><td>${label(kind)}</td><td>${badge(exp)}</td>
+      <td>${badge(cd.decision)} <span class="muted">${cd.score}</span></td><td>${llmCell}</td><td>${match}</td><td>${why}</td><td>${tok}</td></tr>`);
+    draw();
+  }
+  if (!failed) $("batchStatus").textContent = batchCtl.stop ? "Stopped." : "Done.";
+  $("runBatch").disabled = false; $("stopBatch").disabled = true;
+}
+
+/* --- Settings --- */
+function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function applyPreset(name) {
+  const p = PRESETS[name];
+  $("preset").value = name;
+  $("baseUrl").value = p.baseUrl; $("model").value = p.model; $("presetNote").textContent = p.note || "";
+  $("modelList").innerHTML = (p.models || []).map(m => `<option value="${m}">`).join("");
+  $("temp").max = p.format === "anthropic" ? 1 : 2;
+  $("temp").value = p.temp !== undefined ? p.temp : 0;
+  $("effort").value = p.effort || "";
+  $("tempVal").textContent = $("temp").value;
+  const k = load("creditdecision.key." + name); $("apiKey").value = k || ""; $("rememberKey").checked = !!k;
+}
+function loadProfile() { $("history").value = JSON.stringify(makeProfile($("profile").value), null, 2); }
+
+$("preset").onchange = () => applyPreset($("preset").value);
+// Fetches the models available to this key from the provider's /models endpoint
+$("listModels").onclick = async () => {
+  const c = cfg(), note = $("modelsNote"); note.textContent = "Fetching models…";
+  const headers = {};
+  if (c.format === "anthropic") { headers["x-api-key"] = c.apiKey; headers["anthropic-version"] = "2023-06-01"; headers["anthropic-dangerous-direct-browser-access"] = "true"; }
+  else if (c.apiKey) headers["Authorization"] = "Bearer " + c.apiKey;
+  try {
+    const res = await fetch(c.baseUrl.replace(/\/+$/, "") + "/models", { headers });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const ids = ((await res.json()).data || []).map(m => String(m.id).replace(/^models\//, "")).sort();
+    $("modelList").innerHTML = ids.map(m => `<option value="${esc(m)}">`).join("");
+    note.textContent = ids.length + " models found. Click the model box to open the list.";
+  } catch (e) { note.textContent = "Could not fetch the list (" + e.message + "). Copy the model name from the provider's site."; }
+};
+$("temp").oninput = () => $("tempVal").textContent = $("temp").value;
+$("apiKey").onchange = $("rememberKey").onchange = () =>
+  store("creditdecision.key." + $("preset").value, $("rememberKey").checked && $("apiKey").value ? $("apiKey").value : null);
+$("profile").onchange = loadProfile; $("regen").onclick = loadProfile;
+["r_personal", "r_auto", "r_mortgage"].forEach(id => $(id).onchange = loadProfile);
+$("runCode").onclick = runCode;
+$("runLlm").onclick = async () => { $("runLlm").disabled = true; await runLlm(); $("runLlm").disabled = false; };
+$("runBoth").onclick = async () => { runCode(); $("runBoth").disabled = true; await runLlm(); $("runBoth").disabled = false; };
+$("runBatch").onclick = runBatch;
+$("stopBatch").onclick = () => { if (batchCtl) batchCtl.stop = true; };
+$("system").value = DEFAULT_SYSTEM;
+
+applyPreset("gemini");
+loadProfile();
+</script>
+</body>
+</html>
